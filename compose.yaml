@@ -1,0 +1,11 @@
+services:
+  python-telegram-bot:
+    build: .
+    image: "ghcr.io/oasisprotocol/demo-rofl-tgbot"
+    platform: linux/amd64
+    environment:
+      - TOKEN=${TOKEN}
+    ports:
+      - "3000:3000"
+
+
