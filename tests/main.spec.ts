@@ -131,6 +131,10 @@ describe('Resolving example', () => {
             const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
             const xrpTaker = xrplUtils.createXRPLWalletFromEthKey(resolverPk)
 
+            // Refuel both wallets with testnet XRP from faucet
+            await xrplUtils.refuelWalletFromFaucet(xrpMaker)
+            await xrplUtils.refuelWalletFromFaucet(xrpTaker)
+
             const xrpClient = new xrplClient.XRPLEscrowClient({
                 baseUrl: 'http://localhost:3000'
             })
@@ -142,8 +146,8 @@ describe('Resolving example', () => {
                 {
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('1', 1), // determine the price
-                    takingAmount: parseUnits('1', 1),
+                    makingAmount: parseUnits('2', 6), // determine the price
+                    takingAmount: parseUnits('2', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address("0x0000000000000000000000000000000000000000")
                 },
@@ -160,8 +164,8 @@ describe('Resolving example', () => {
                     }),
                     srcChainId,
                     dstChainId,
-                    srcSafetyDeposit: parseEther('0.001'),
-                    dstSafetyDeposit: parseEther('0.001')
+                    srcSafetyDeposit: parseUnits('1', 5),
+                    dstSafetyDeposit: parseUnits('1', 5)
                 },
                 {
                     auction: new Sdk.AuctionDetails({
@@ -227,7 +231,9 @@ describe('Resolving example', () => {
             console.log("Created escrow on XRPL", xrpEscrow)
 
             // Now deposit funds to escrow (TEE) on the destination chain, with security deposit
-
+            const xrpDepositHash = await xrplUtils.sendXRP(xrpTaker, xrpEscrow.walletAddress, xrpEscrow.requiredDeposit.xrp)
+            const xrplExplorer = `https://testnet.xrpl.org/transactions/${xrpDepositHash}`
+            console.log("Deposited funds to escrow on XRPL", xrplExplorer)
 
             const dstImmutables = srcEscrowEvent[0]
                 .withComplement(srcEscrowEvent[1])
