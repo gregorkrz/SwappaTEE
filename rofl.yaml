@@ -1,5 +1,5 @@
 name: 9inch
-version: 0.1.2
+version: 0.1.4
 tee: tdx
 kind: container
 resources:
@@ -32,8 +32,8 @@ deployments:
           min_tcb_evaluation_data_number: 18
           tdx: {}
       enclaves:
-        - id: ohfxFS3oi58KY+DtFTWQdScteDnx/U0AXfLfGC/jfl8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
-        - id: EJpmwGKOy3UeCYImqi9GJ9O6BmgH15YwhELgFyn5ShAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: cPX2s4bwe140jQP26309TQXbcFfWu80UJHRgV4XLdi4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: v95FJieqi4DFFCPHtdS2ZyKHHQUN+Szmbfj+kpO8zVwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
       endorsements:
         - any: {}
       fees: endorsing_node
@@ -45,4 +45,4 @@ deployments:
       default:
         provider: oasis1qp2ens0hsp7gh23wajxa4hpetkdek3swyyulyrmz
         offer: playground_short
-        id: 000000000000012a
+        id: "0000000000000138"

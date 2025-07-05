@@ -1,7 +1,7 @@
 services:
-  python-telegram-bot:
+  python-telegram-bot-cloudflare:
     build: .
-    image: "ghcr.io/oasisprotocol/demo-rofl-tgbot"
+    image: "docker.io/lukaskel/rofl-tgbot:v1.0"
     platform: linux/amd64
     environment:
       - TOKEN=${TOKEN}
