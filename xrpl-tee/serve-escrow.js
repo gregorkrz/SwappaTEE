@@ -122,7 +122,6 @@ class XRPLEscrowTEE {
                     amount,
                     safetyDeposit,
                     timelocks,
-                    srcCancellationTimestamp
                 } = req.body;
 
                 // Generate new wallet for this escrow
@@ -130,13 +129,6 @@ class XRPLEscrowTEE {
                 const deployedAt = Math.floor(Date.now() / 1000);
                 const parsedTimelocks = this.parseTimelocks(timelocks, deployedAt);
                 
-                // Validate cancellation timing
-                if (parsedTimelocks[this.TimeStages.DstCancellation] > srcCancellationTimestamp) {
-                    return res.status(400).json({ 
-                        error: 'Destination cancellation time must not exceed source cancellation time' 
-                    });
-                }
-
                 const escrowId = crypto.randomUUID();
                 const escrow = {
                     id: escrowId,

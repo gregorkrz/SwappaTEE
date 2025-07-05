@@ -128,7 +128,9 @@ describe('Resolving example', () => {
         it('should swap Ethereum USDC -> XRPL XRP. Single fill only', async () => {
 
             // Taker side: Create XRPL wallet and client
+            const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
             const xrpTaker = xrplUtils.createXRPLWalletFromEthKey(resolverPk)
+
             const xrpClient = new xrplClient.XRPLEscrowClient({
                 baseUrl: 'http://localhost:3000'
             })
@@ -140,10 +142,10 @@ describe('Resolving example', () => {
                 {
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('10', 6), // determine the price
-                    takingAmount: parseUnits('10', 6),
+                    makingAmount: parseUnits('1', 1), // determine the price
+                    takingAmount: parseUnits('1', 1),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
-                    takerAsset: new Address(config.chain.destination.tokens.USDC.address)
+                    takerAsset: new Address("0x0000000000000000000000000000000000000000")
                 },
                 {
                     hashLock: Sdk.HashLock.forSingleFill(secret),
@@ -210,9 +212,22 @@ describe('Resolving example', () => {
             const srcEscrowEvent = await srcFactory.getSrcDeployEvent(srcDeployBlock)
             
             // Deploy dst escrow on XRPL
-
+            const createEscrowPayload = {
+                orderHash,
+                hashlock: order.escrowExtension.hashLockInfo.toString(),
+                maker: xrpMaker.address.toString(),
+                taker: xrpTaker.address.toString(),
+                token: "0x0000000000000000000000000000000000000000",
+                amount: order.takingAmount.toString(),
+                safetyDeposit: order.escrowExtension.dstSafetyDeposit.toString(),
+                timelocks: order.escrowExtension.timeLocks.build().toString(),
+            }
+            console.log("Creating escrow on XRPL", createEscrowPayload)
+            const xrpEscrow = await xrpClient.createDestinationEscrow(createEscrowPayload)
+            console.log("Created escrow on XRPL", xrpEscrow)
 
             // Now deposit funds to escrow (TEE) on the destination chain, with security deposit
+
 
             const dstImmutables = srcEscrowEvent[0]
                 .withComplement(srcEscrowEvent[1])
