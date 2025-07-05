@@ -1,2 +1,3 @@
 *.orc
 /my_env
+.env
