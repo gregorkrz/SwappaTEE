@@ -1,3 +1,5 @@
 *.orc
 /my_env
 .env
+/node_modules
+/dist
