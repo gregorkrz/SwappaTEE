@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Example of 1inch cross chain resolver",
   "scripts": {
-    "test": "forge build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test": "forge build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --verbose --detectOpenHandles --forceExit",
+    "test:debug": "forge build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --verbose --detectOpenHandles --runInBand",
+    "test:silent": "forge build && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --silent --detectOpenHandles --forceExit",
     "lint": "eslint  \"tests/**/*.ts\""
   },
   "devDependencies": {
