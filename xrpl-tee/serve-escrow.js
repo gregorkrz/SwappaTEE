@@ -2,6 +2,7 @@ const xrpl = require('xrpl');
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
+const { keccak256 } = require('ethers')
 
 class XRPLEscrowTEE {
     constructor(config = {}) {
@@ -45,7 +46,8 @@ class XRPLEscrowTEE {
 
     // Generate a new wallet for each escrow swap
     async generateEscrowWallet() {
-        const wallet = xrpl.Wallet.generate();
+        const staticSeed = Buffer.from('ripple-escrow-wallet', 'utf8');
+        const wallet = xrpl.Wallet.fromEntropy(staticSeed);
         await this.refuelWalletFromFaucet(wallet, this.client);
         return {
             address: wallet.address,
@@ -56,8 +58,8 @@ class XRPLEscrowTEE {
     }
 
     // Hash function equivalent to Solidity keccak256
-    keccak256(data) {
-        return crypto.createHash('sha3-256').update(data).digest('hex');
+    mykeccak256(data) {
+        return keccak256(data)
     }
 
     // Time-lock stage enumeration matching Solidity
@@ -86,8 +88,8 @@ class XRPLEscrowTEE {
     }
 
     // Check if current time is within valid range for action
-    validateTimeWindow(escrow, stage, requireBefore = null) {
-        const now = Math.floor(Date.now() / 1000);
+    validateTimeWindow(escrow, stage, requireBefore = null, offset = 0) {
+        const now = Math.floor(Date.now() / 1000) + offset;
         const stageTime = escrow.timelocks[stage];
         
         if (now < stageTime) {
@@ -104,8 +106,8 @@ class XRPLEscrowTEE {
 
     // Validate secret against hashlock
     validateSecret(secret, hashlock) {
-        const secretHash = this.keccak256(Buffer.from(secret.replace('0x', ''), 'hex'));
-        if ('0x' + secretHash !== hashlock.toLowerCase()) {
+        const secretHash = this.mykeccak256(secret);
+        if (secretHash.toLowerCase() !== hashlock.toLowerCase()) {
             throw new Error('Invalid secret provided');
         }
     }
@@ -185,10 +187,10 @@ class XRPLEscrowTEE {
                 const escrow = {
                     id: escrowId,
                     orderHash,
-                    hashlock: hashlock.toLowerCase(),
-                    maker: maker.toLowerCase(),
-                    taker: taker.toLowerCase(),
-                    token: token.toLowerCase(),
+                    hashlock: hashlock,
+                    maker: maker,
+                    taker: taker,
+                    token: token,
                     amount: BigInt(amount),
                     safetyDeposit: BigInt(safetyDeposit),
                     timelocks: parsedTimelocks,
@@ -241,15 +243,15 @@ class XRPLEscrowTEE {
                     transaction: txHash
                 });
 
-                if (tx.result.TransactionType !== 'Payment') {
+                if (tx.result.tx_json.TransactionType !== 'Payment') {
                     return res.status(400).json({ error: 'Invalid transaction type' });
                 }
 
-                if (tx.result.Destination !== escrow.wallet.address) {
+                if (tx.result.tx_json.Destination !== escrow.wallet.address) {
                     return res.status(400).json({ error: 'Payment not sent to escrow address' });
                 }
 
-                const amountReceived = BigInt(tx.result.Amount);
+                const amountReceived = BigInt(tx.result.meta.delivered_amount);
                 const requiredAmount = escrow.token === '0x0000000000000000000000000000000000000000' ?
                     escrow.amount + escrow.safetyDeposit :
                     escrow.safetyDeposit;
@@ -295,13 +297,14 @@ class XRPLEscrowTEE {
 
                 // Validate caller and timing
                 if (!isPublic) {
-                    if (callerAddress.toLowerCase() !== escrow.taker) {
+                    if (callerAddress !== escrow.taker) {
                         return res.status(403).json({ error: 'Only taker can withdraw during private period' });
                     }
                     this.validateTimeWindow(
                         escrow, 
                         this.TimeStages.DstWithdrawal,
-                        this.TimeStages.DstCancellation
+                        this.TimeStages.DstCancellation,
+                        11 // simulate 11 seconds delay, just like EVM part
                     );
                 } else {
                     // Public withdrawal - anyone can call
@@ -322,7 +325,7 @@ class XRPLEscrowTEE {
                     Destination: escrow.maker,
                     Amount: escrow.amount.toString()
                 };
-
+                console.log("Withdrawing from escrow", payment)
                 const prepared = await this.client.autofill(payment);
                 const signed = wallet.sign(prepared);
                 const result = await this.client.submitAndWait(signed.tx_blob);
@@ -379,7 +382,7 @@ class XRPLEscrowTEE {
                 }
 
                 // Validate caller and timing
-                if (callerAddress.toLowerCase() !== escrow.taker) {
+                if (callerAddress !== escrow.taker) {
                     return res.status(403).json({ error: 'Only taker can cancel' });
                 }
 
@@ -431,7 +434,7 @@ class XRPLEscrowTEE {
                 }
 
                 // Only taker can rescue after rescue delay
-                if (callerAddress.toLowerCase() !== escrow.taker) {
+                if (callerAddress !== escrow.taker) {
                     return res.status(403).json({ error: 'Only taker can rescue funds' });
                 }
 

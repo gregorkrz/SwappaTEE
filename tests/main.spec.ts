@@ -233,11 +233,11 @@ describe('Resolving example', () => {
             // Now deposit funds to escrow (TEE) on the destination chain, with security deposit
             const xrpDepositHash = await xrplUtils.sendXRP(xrpTaker, xrpEscrow.walletAddress, xrpEscrow.requiredDeposit.xrp)
             const xrplExplorer = `https://testnet.xrpl.org/transactions/${xrpDepositHash}`
-            console.log("Deposited funds to escrow on XRPL", xrplExplorer)
-
-            const dstImmutables = srcEscrowEvent[0]
-                .withComplement(srcEscrowEvent[1])
-                .withTaker(new Address(resolverContract.dstAddress))
+            const excrowFunding = await xrpClient.fundEscrow(xrpEscrow.escrowId, {
+                fromAddress: xrpTaker.address,
+                txHash: xrpDepositHash
+            })
+            console.log("Funding to escrow on XRPL confirmed", xrplExplorer)
 
             const ESCROW_SRC_IMPLEMENTATION = await srcFactory.getSourceImpl()
 
@@ -251,10 +251,11 @@ describe('Resolving example', () => {
 
             // User shares key after validation of dst escrow deployment
             // Withdraw funds from dst escrow to user
-            console.log(`[${dstChainId}]`, `Withdrawing funds for user from ${dstEscrowAddress}`)
-            await dstChainResolver.send(
-                resolverContract.withdraw('dst', dstEscrowAddress, secret, dstImmutables.withDeployedAt(dstDeployedAt))
-            )
+            console.log(`[XRPL]`, `Withdrawing funds for user from ${xrpEscrow.escrowId}`)
+
+            const xrplWithdrawal = await xrpClient.withdraw(xrpEscrow.escrowId, secret, xrpTaker.address, false)
+            const xrplWithdrawalExplorer = `https://testnet.xrpl.org/transactions/${xrplWithdrawal.txHash}`
+            console.log(`[XRPL]`, `Withdrew funds for user from ${xrpEscrow.walletAddress}`, xrplWithdrawalExplorer)
 
             // Withdraw funds from src escrow to resolver
             console.log(`[${srcChainId}]`, `Withdrawing funds for resolver from ${srcEscrowAddress}`)
@@ -266,10 +267,9 @@ describe('Resolving example', () => {
                 `Withdrew funds for resolver from ${srcEscrowAddress} to ${src.resolver} in tx ${resolverWithdrawHash}`
             )
 
-            const resultBalances = await getBalances(
-                config.chain.source.tokens.USDC.address,
-                config.chain.destination.tokens.USDC.address
-            )
+            console.log("Balances:")
+            console.log("Maker:")
+            console.log("Taker:")
 
         })
     })
