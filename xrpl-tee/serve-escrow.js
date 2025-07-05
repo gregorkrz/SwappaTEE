@@ -320,6 +320,7 @@ class XRPLEscrowTEE {
 
         // Cancel destination escrow
         this.app.post('/escrow/:escrowId/cancel', async (req, res) => {
+            // This happens if maker does not reveal the secret in time.
             try {
                 const { escrowId } = req.params;
                 const { callerAddress } = req.body;
@@ -497,7 +498,7 @@ if (require.main === module) {
     const server = new XRPLEscrowTEE({
         network: process.env.XRPL_NETWORK || 'wss://s.altnet.rippletest.net:51233',
         port: process.env.PORT || 3000,
-        rescueDelay: parseInt(process.env.RESCUE_DELAY) || 86400 * 7
+        rescueDelay: parseInt(process.env.RESCUE_DELAY) || 60 * 30
     });
 
     server.start().catch(console.error);
