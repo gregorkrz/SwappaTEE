@@ -146,8 +146,8 @@ describe('Resolving example', () => {
                 {
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('2', 6), // determine the price
-                    takingAmount: parseUnits('2', 6),
+                    makingAmount: parseUnits('1', 6), // determine the price
+                    takingAmount: parseUnits('1', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address("0x0000000000000000000000000000000000000000")
                 },
@@ -239,13 +239,6 @@ describe('Resolving example', () => {
                 .withComplement(srcEscrowEvent[1])
                 .withTaker(new Address(resolverContract.dstAddress))
 
-            console.log(`[${dstChainId}]`, `Depositing ${dstImmutables.amount} for order ${orderHash}`)
-            // Replace with XRP deposit
-            //const {txHash: dstDepositHash, blockTimestamp: dstDeployedAt} = await dstChainResolver.send(
-            //        resolverContract.deployDst(dstImmutables)
-            //    )
-            console.log(`[${dstChainId}]`, `Created dst deposit for order ${orderHash} in tx ${"on xrp"}`)
-
             const ESCROW_SRC_IMPLEMENTATION = await srcFactory.getSourceImpl()
 
             const srcEscrowAddress = new Sdk.EscrowFactory(new Address(src.escrowFactory)).getSrcEscrowAddress(
@@ -255,6 +248,7 @@ describe('Resolving example', () => {
 
             // signal that it's safe to reveal the secret
             await increaseTime(11)
+
             // User shares key after validation of dst escrow deployment
             // Withdraw funds from dst escrow to user
             console.log(`[${dstChainId}]`, `Withdrawing funds for user from ${dstEscrowAddress}`)

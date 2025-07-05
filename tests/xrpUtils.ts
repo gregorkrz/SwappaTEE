@@ -33,7 +33,7 @@ export function createXRPLWalletFromEthKey(ethPrivateKey: string): xrpl.Wallet {
 export async function refuelWalletFromFaucet(
   wallet: xrpl.Wallet, 
   client?: xrpl.Client,
-  minBalance: number = 25
+  minBalance: number = 5
 ): Promise<void> {
   let xrplClient = client;
   let shouldDisconnect = false;
