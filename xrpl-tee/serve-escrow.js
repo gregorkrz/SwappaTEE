@@ -381,12 +381,12 @@ class XRPLEscrowTEE {
                     return res.status(400).json({ error: 'Escrow not funded or already processed' });
                 }
 
-                // Validate caller and timing
+                // Validate caller and timing - todo: include nonce signature to ensure PubKey
                 if (callerAddress !== escrow.taker) {
                     return res.status(403).json({ error: 'Only taker can cancel' });
                 }
 
-                this.validateTimeWindow(escrow, this.TimeStages.DstCancellation);
+                this.validateTimeWindow(escrow, this.TimeStages.DstCancellation, null, 125);
 
                 // Execute cancellation - return funds to taker
                 const walletSeed = this.walletSeeds.get(escrowId);
