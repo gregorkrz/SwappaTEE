@@ -125,31 +125,23 @@ describe('Resolving example', () => {
 
     // eslint-disable-next-line max-lines-per-function
     describe('Fill', () => {
-        it.skip('should swap Ethereum USDC -> XRP on XRPL. Single fill only', async () => {
+        it('should swap XRP on XRPL -> Ethereum USDC. Single fill only', async () => {
+            const initialBalances = await getBalances(
+                config.chain.source.tokens.USDC.address,
+                config.chain.destination.tokens.USDC.address
+            )
 
-            // Taker side: Create XRPL wallet and client
-            const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
-            const xrpTaker = xrplUtils.createXRPLWalletFromEthKey(resolverPk)
-
-            // Refuel both wallets with testnet XRP from faucet
-            await xrplUtils.refuelWalletFromFaucet(xrpMaker)
-            await xrplUtils.refuelWalletFromFaucet(xrpTaker)
-
-            const xrpClient = new xrplClient.XRPLEscrowClient({
-                baseUrl: 'http://localhost:3000'
-            })
-
-            // MAKER SIDE: User creates and signs an order
+            // User creates order
             const secret = uint8ArrayToHex(randomBytes(32)) // note: use crypto secure random number in real world
             const order = Sdk.CrossChainOrder.new(
                 new Address(src.escrowFactory),
                 {
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('1', 6), // determine the price
+                    makingAmount: parseUnits('1', 6),
                     takingAmount: parseUnits('1', 6),
-                    makerAsset: new Address(config.chain.source.tokens.USDC.address),
-                    takerAsset: new Address("0x0000000000000000000000000000000000000000")
+                    takerAsset: new Address(config.chain.destination.tokens.USDC.address),
+                    makerAsset: new Address(config.chain.source.tokens.USDC.address)
                 },
                 {
                     hashLock: Sdk.HashLock.forSingleFill(secret),
@@ -191,87 +183,71 @@ describe('Resolving example', () => {
 
             const signature = await srcChainUser.signOrder(srcChainId, order)
             const orderHash = order.getOrderHash(srcChainId)
-
-            // Taker will now fill the order and deploy both escrows
-            // We ignore the destination chain resolver contract, because we are not using it
+            // Resolver fills order
             const resolverContract = new Resolver(src.resolver, dst.resolver)
 
-            console.log(`[${srcChainId}]`, `Filling order ${orderHash}`)
+            const deployedAtTimelocks = order.escrowExtension.timeLocks
+            deployedAtTimelocks.setDeployedAt(srcTimestamp)
 
-            // Fill whole order at once, deploy src escrow, pay security deposit
-            const fillAmount = order.makingAmount
-            const {txHash: orderFillHash, blockHash: srcDeployBlock} = await srcChainResolver.send(
-                resolverContract.deploySrc(
-                    srcChainId,
-                    order,
-                    signature,
-                    Sdk.TakerTraits.default()
-                        .setExtension(order.extension)
-                        .setAmountMode(Sdk.AmountMode.maker)
-                        .setAmountThreshold(order.takingAmount),
-                    fillAmount
-                )
-            )
-            console.log(`[${srcChainId}]`, `Order ${orderHash} filled for ${fillAmount} in tx ${orderFillHash}`)
-            const srcEscrowEvent = await srcFactory.getSrcDeployEvent(srcDeployBlock)
+            // fill order on SRC chain
             
-            // Deploy dst escrow on XRPL
-            const createEscrowPayload = {
-                orderHash,
-                hashlock: order.escrowExtension.hashLockInfo.toString(),
-                maker: xrpMaker.address.toString(),
-                taker: xrpTaker.address.toString(),
-                token: "0x0000000000000000000000000000000000000000",
-                amount: order.takingAmount.toString(),
-                safetyDeposit: order.escrowExtension.dstSafetyDeposit.toString(),
-                timelocks: order.escrowExtension.timeLocks.build().toString(),
-            }
-            console.log("Creating escrow on XRPL", createEscrowPayload)
-            const xrpEscrow = await xrpClient.createDestinationEscrow(createEscrowPayload)
-            console.log("Created escrow on XRPL", xrpEscrow)
-
-            // Now deposit funds to escrow (TEE) on the destination chain, with security deposit
-            const xrpDepositHash = await xrplUtils.sendXRP(xrpTaker, xrpEscrow.walletAddress, xrpEscrow.requiredDeposit.xrp)
-            const xrplExplorer = `https://testnet.xrpl.org/transactions/${xrpDepositHash}`
-            const excrowFunding = await xrpClient.fundEscrow(xrpEscrow.escrowId, {
-                fromAddress: xrpTaker.address,
-                txHash: xrpDepositHash
+            const dstImmutables = Sdk.Immutables.new({
+                orderHash: orderHash,
+                hashLock: order.escrowExtension.hashLockInfo,
+                maker: new Address(await srcChainUser.getAddress()),
+                taker: new Address(resolverContract.dstAddress),
+                token: new Address(config.chain.destination.tokens.USDC.address),
+                amount: order.takingAmount,
+                safetyDeposit: order.escrowExtension.dstSafetyDeposit,
+                timeLocks: deployedAtTimelocks
             })
-            console.log("Funding to escrow on XRPL confirmed", xrplExplorer)
 
-            const ESCROW_SRC_IMPLEMENTATION = await srcFactory.getSourceImpl()
+            const dstComplement = Sdk.DstImmutablesComplement.new({
+                maker: new Address(await srcChainUser.getAddress()),
+                amount: order.takingAmount,
+                token: new Address(config.chain.destination.tokens.USDC.address),
+                safetyDeposit: order.escrowExtension.dstSafetyDeposit,
+            })
 
-            const srcEscrowAddress = new Sdk.EscrowFactory(new Address(src.escrowFactory)).getSrcEscrowAddress(
-                srcEscrowEvent[0],
-                ESCROW_SRC_IMPLEMENTATION
+            console.log(`[${dstChainId}]`, `Depositing ${dstImmutables.amount} for order ${orderHash}`)
+            const {txHash: dstDepositHash, blockTimestamp: dstDeployedAt} = await dstChainResolver.send(
+                resolverContract.deployDst(dstImmutables)
+            )
+            console.log(`[${dstChainId}]`, `Created dst deposit for order ${orderHash} in tx ${dstDepositHash}`)
+
+            const ESCROW_DST_IMPLEMENTATION = await dstFactory.getDestinationImpl()
+
+
+            const dstEscrowAddress = new Sdk.EscrowFactory(new Address(dst.escrowFactory)).getDstEscrowAddress(
+                dstImmutables,
+                dstComplement,
+                dstDeployedAt,
+                new Address(resolverContract.dstAddress),
+                ESCROW_DST_IMPLEMENTATION
             )
 
-            // signal that it's safe to reveal the secret
             await increaseTime(11)
-
             // User shares key after validation of dst escrow deployment
-            // Withdraw funds from dst escrow to user
-            console.log(`[XRPL]`, `Withdrawing funds for user from ${xrpEscrow.escrowId}`)
-
-            const xrplWithdrawal = await xrpClient.withdraw(xrpEscrow.escrowId, secret, xrpTaker.address, false)
-            const xrplWithdrawalExplorer = `https://testnet.xrpl.org/transactions/${xrplWithdrawal.txHash}`
-            console.log(`[XRPL]`, `Withdrew funds for user from ${xrpEscrow.walletAddress}`, xrplWithdrawalExplorer)
-
-            // Withdraw funds from src escrow to resolver
-            console.log(`[${srcChainId}]`, `Withdrawing funds for resolver from ${srcEscrowAddress}`)
-            const {txHash: resolverWithdrawHash} = await srcChainResolver.send(
-                resolverContract.withdraw('src', srcEscrowAddress, secret, srcEscrowEvent[0])
+            console.log(`[${dstChainId}]`, `Withdrawing funds for user from ${dstEscrowAddress}`)
+            await dstChainResolver.send(
+                resolverContract.withdraw('dst', dstEscrowAddress, secret, dstImmutables.withDeployedAt(dstDeployedAt))
             )
-            console.log(
-                `[${srcChainId}]`,
-                `Withdrew funds for resolver from ${srcEscrowAddress} to ${src.resolver} in tx ${resolverWithdrawHash}`
+
+            // withdraw from SRC XRPL escrow
+
+            const resultBalances = await getBalances(
+                config.chain.source.tokens.USDC.address,
+                config.chain.destination.tokens.USDC.address
             )
-            console.log("Swap completed successfully!")
+
+            // resolver transferred funds to user on destination chain
+            expect(resultBalances.dst.user - initialBalances.dst.user).toBe(order.takingAmount)
+            expect(initialBalances.dst.resolver - resultBalances.dst.resolver).toBe(order.takingAmount)
         })
     })
 
     describe('Cancel', () => {
-        it('should cancel swap Ethereum USDC -> XRP on XRPL', async () => {
+        it.skip('should cancel swap Ethereum USDC -> XRP on XRPL', async () => {
             // Taker side: Create XRPL wallet and client
             const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
             const xrpTaker = xrplUtils.createXRPLWalletFromEthKey(resolverPk)

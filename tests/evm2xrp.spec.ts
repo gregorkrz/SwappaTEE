@@ -126,6 +126,10 @@ describe('Resolving example', () => {
     // eslint-disable-next-line max-lines-per-function
     describe('Fill', () => {
         it.skip('should swap Ethereum USDC -> XRP on XRPL. Single fill only', async () => {
+            const initialBalances = await getBalances(
+                config.chain.source.tokens.USDC.address,
+                config.chain.destination.tokens.USDC.address
+            )
 
             // Taker side: Create XRPL wallet and client
             const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
@@ -266,6 +270,16 @@ describe('Resolving example', () => {
                 `[${srcChainId}]`,
                 `Withdrew funds for resolver from ${srcEscrowAddress} to ${src.resolver} in tx ${resolverWithdrawHash}`
             )
+            
+            const resultBalances = await getBalances(
+                config.chain.source.tokens.USDC.address,
+                config.chain.destination.tokens.USDC.address
+            )
+
+            // user transferred funds to resolver on the source chain
+            expect(initialBalances.src.user - resultBalances.src.user).toBe(fillAmount)
+            expect(resultBalances.src.resolver - initialBalances.src.resolver).toBe(fillAmount)
+            
             console.log("Swap completed successfully!")
         })
     })
