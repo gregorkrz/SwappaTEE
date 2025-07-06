@@ -292,7 +292,7 @@ describe('Resolving example', () => {
     })
 
     describe('Cancel', () => {
-        it('should cancel swap Ethereum USDC -> XRP on XRPL', async () => {
+        it('should cancel swap XRP XRPL -> Ethereum USDC', async () => {
             // Taker side: Create XRPL wallet and client
             const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
             const xrpTaker = xrplUtils.createXRPLWalletFromEthKey(resolverPk)

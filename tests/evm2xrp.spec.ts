@@ -125,7 +125,7 @@ describe('Resolving example', () => {
 
     // eslint-disable-next-line max-lines-per-function
     describe('Fill', () => {
-        it.skip('should swap Ethereum USDC -> XRP on XRPL. Single fill only', async () => {
+        it('should swap Ethereum USDC -> XRP on XRPL. Single fill only', async () => {
             const initialBalances = await getBalances(
                 config.chain.source.tokens.USDC.address,
                 config.chain.destination.tokens.USDC.address
@@ -286,7 +286,7 @@ describe('Resolving example', () => {
     })
 
     describe('Cancel', () => {
-        it.skip('should cancel swap Ethereum USDC -> XRP on XRPL', async () => {
+        it('should cancel swap Ethereum USDC -> XRP on XRPL', async () => {
             // Taker side: Create XRPL wallet and client
             const xrpMaker = xrplUtils.createXRPLWalletFromEthKey(userPk)
             const xrpTaker = xrplUtils.createXRPLWalletFromEthKey(resolverPk)
@@ -385,6 +385,7 @@ describe('Resolving example', () => {
                 amount: order.takingAmount.toString(),
                 safetyDeposit: order.escrowExtension.dstSafetyDeposit.toString(),
                 timelocks: order.escrowExtension.timeLocks.build().toString(),
+                type: 'dst'
             }
             console.log("Creating escrow on XRPL", createEscrowPayload)
             const xrpEscrow = await xrpClient.createDestinationEscrow(createEscrowPayload)
