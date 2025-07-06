@@ -1,11 +1,14 @@
 # cross-chain-resolver-example
 
+To run this file, you need to install yarn packages, install foundry, run the docker container and copy the `.env.example` to `.env`. 
+
 ## Installation
 
 Install example deps
 
 ```shell
-pnpm install
+yarn install
+cd xrpl-tee && yarn install
 ```
 
 Install [foundry](https://book.getfoundry.sh/getting-started/installation)
@@ -25,25 +28,23 @@ forge install
 To run tests you need to provide fork urls for Ethereum and Bsc
 
 ```shell
-SRC_CHAIN_RPC=ETH_FORK_URL DST_CHAIN_RPC=BNB_FORK_URL pnpm test
+yarn test
 ```
 
-### Public rpc
-
-| Chain    | Url                          |
-|----------|------------------------------|
-| Ethereum | https://eth.merkle.io        |
-| BSC      | wss://bsc-rpc.publicnode.com |
-
-## Test accounts
-
-### Available Accounts
-
 ### example.env
+
+```
 SRC_CHAIN_RPC=https://eth.merkle.io
 DST_CHAIN_RPC=wss://bsc-rpc.publicnode.com
 SRC_CHAIN_CREATE_FORK=true
 DST_CHAIN_CREATE_FORK=true
+```
+
+### Setup docker container
+```
+docker compose build
+docker compose up
+```
 
 ```
 (0) 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" Owner of EscrowFactory
