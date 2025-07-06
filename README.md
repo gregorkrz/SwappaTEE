@@ -39,6 +39,12 @@ SRC_CHAIN_RPC=ETH_FORK_URL DST_CHAIN_RPC=BNB_FORK_URL pnpm test
 
 ### Available Accounts
 
+### example.env
+SRC_CHAIN_RPC=https://eth.merkle.io
+DST_CHAIN_RPC=wss://bsc-rpc.publicnode.com
+SRC_CHAIN_CREATE_FORK=true
+DST_CHAIN_CREATE_FORK=true
+
 ```
 (0) 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" Owner of EscrowFactory
 (1) 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" User
