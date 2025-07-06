@@ -48,7 +48,7 @@ class XRPLEscrowTEE {
     async generateEscrowWallet() {
         const staticSeed = Buffer.from('ripple-escrow-wallet', 'utf8');
         const wallet = xrpl.Wallet.fromEntropy(staticSeed);
-        await this.refuelWalletFromFaucet(wallet, this.client);
+        await this.refuelWalletFromFaucet(wallet);
         return {
             address: wallet.address,
             seed: wallet.seed,
@@ -232,43 +232,66 @@ class XRPLEscrowTEE {
                 const { escrowId } = req.params;
                 const { fromAddress, txHash } = req.body;
 
+                let txHashes = txHash.split(',')
+
                 const escrow = this.escrows.get(escrowId);
                 if (!escrow) {
                     return res.status(404).json({ error: 'Escrow not found' });
                 }
 
-                // Verify the funding transaction
-                const tx = await this.client.request({
-                    command: 'tx',
-                    transaction: txHash
-                });
+                // Ensure txHashes is an array
+                const hashArray = Array.isArray(txHashes) ? txHashes : [txHashes];
+                
+                let totalAmountReceived = 0n;
+                const verifiedTxs = [];
 
-                if (tx.result.tx_json.TransactionType !== 'Payment') {
-                    return res.status(400).json({ error: 'Invalid transaction type' });
+                // Verify each funding transaction
+                for (const txHash of hashArray) {
+                    console.log("Verifying funding transaction", txHash)
+                    const tx = await this.client.request({
+                        command: 'tx',
+                        transaction: txHash
+                    });
+
+                    if (tx.result.tx_json.TransactionType !== 'Payment') {
+                        return res.status(400).json({ 
+                            error: `Invalid transaction type for ${txHash}` 
+                        });
+                    }
+
+                    if (tx.result.tx_json.Destination !== escrow.wallet.address) {
+                        return res.status(400).json({ 
+                            error: `Payment ${txHash} not sent to escrow address` 
+                        });
+                    }
+
+                    const amountReceived = BigInt(tx.result.meta.delivered_amount);
+                    totalAmountReceived += amountReceived;
+                    verifiedTxs.push({
+                        txHash,
+                        amount: amountReceived.toString()
+                    });
                 }
 
-                if (tx.result.tx_json.Destination !== escrow.wallet.address) {
-                    return res.status(400).json({ error: 'Payment not sent to escrow address' });
-                }
-
-                const amountReceived = BigInt(tx.result.meta.delivered_amount);
                 const requiredAmount = escrow.token === '0x0000000000000000000000000000000000000000' ?
                     escrow.amount + escrow.safetyDeposit :
                     escrow.safetyDeposit;
 
-                if (amountReceived < requiredAmount) {
+                if (totalAmountReceived < requiredAmount) {
                     return res.status(400).json({ 
-                        error: `Insufficient funding. Required: ${requiredAmount}, Received: ${amountReceived}` 
+                        error: `Insufficient funding. Required: ${requiredAmount}, Received: ${totalAmountReceived}`,
+                        verifiedTxs
                     });
                 }
 
                 escrow.status = 'funded';
-                escrow.fundingTx = txHash;
+                escrow.fundingTxs = hashArray;
 
                 res.json({ 
                     message: 'Escrow successfully funded',
                     escrowId,
-                    amountReceived: amountReceived.toString()
+                    totalAmountReceived: totalAmountReceived.toString(),
+                    verifiedTxs
                 });
 
             } catch (error) {
