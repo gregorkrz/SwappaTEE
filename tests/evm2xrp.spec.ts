@@ -229,6 +229,7 @@ describe('Resolving example', () => {
                 amount: order.takingAmount.toString(),
                 safetyDeposit: order.escrowExtension.dstSafetyDeposit.toString(),
                 timelocks: order.escrowExtension.timeLocks.build().toString(),
+                type: 'dst'
             }
             console.log("Creating escrow on XRPL", createEscrowPayload)
             const xrpEscrow = await xrpClient.createDestinationEscrow(createEscrowPayload)

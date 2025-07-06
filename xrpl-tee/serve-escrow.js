@@ -176,6 +176,7 @@ class XRPLEscrowTEE {
                     amount,
                     safetyDeposit,
                     timelocks,
+                    type
                 } = req.body;
 
                 // Generate new wallet for this escrow
@@ -200,7 +201,7 @@ class XRPLEscrowTEE {
                         publicKey: escrowWallet.publicKey
                     },
                     status: 'created',
-                    type: 'destination'
+                    type: type
                 };
 
                 // Store escrow and wallet seed securely
@@ -411,33 +412,97 @@ class XRPLEscrowTEE {
 
                 this.validateTimeWindow(escrow, this.TimeStages.DstCancellation, null, 125);
 
-                // Execute cancellation - return funds to taker
+                // Execute cancellation based on escrow type
                 const walletSeed = this.walletSeeds.get(escrowId);
                 const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                
+                let cancelTxs = [];
 
-                const payment = {
-                    TransactionType: 'Payment',
-                    Account: wallet.address,
-                    Destination: escrow.taker,
-                    Amount: (escrow.amount + escrow.safetyDeposit).toString()
-                };
+                if (escrow.type === 'dst') {
+                    // DST escrow: return everything to taker
+                    const payment = {
+                        TransactionType: 'Payment',
+                        Account: wallet.address,
+                        Destination: escrow.taker,
+                        Amount: (escrow.amount + escrow.safetyDeposit).toString()
+                    };
 
-                const prepared = await this.client.autofill(payment);
-                const signed = wallet.sign(prepared);
-                const result = await this.client.submitAndWait(signed.tx_blob);
+                    const prepared = await this.client.autofill(payment);
+                    const signed = wallet.sign(prepared);
+                    const result = await this.client.submitAndWait(signed.tx_blob);
+                    
+                    if (result.result.meta.TransactionResult === 'tesSUCCESS') {
+                        cancelTxs.push({
+                            recipient: escrow.taker,
+                            amount: (escrow.amount + escrow.safetyDeposit).toString(),
+                            txHash: result.result.hash
+                        });
+                    } else {
+                        throw new Error(`Payment to taker failed: ${result.result.meta.TransactionResult}`);
+                    }
+                } else if (escrow.type === 'src') {
+                    // SRC escrow: return amount to maker, safety deposit to taker
+                    
+                    // Return amount to maker
+                    if (escrow.amount > 0) {
+                        const makerPayment = {
+                            TransactionType: 'Payment',
+                            Account: wallet.address,
+                            Destination: escrow.maker,
+                            Amount: escrow.amount.toString()
+                        };
 
-                if (result.result.meta.TransactionResult === 'tesSUCCESS') {
-                    escrow.status = 'cancelled';
-                    escrow.cancelTx = result.result.hash;
+                        const preparedMaker = await this.client.autofill(makerPayment);
+                        const signedMaker = wallet.sign(preparedMaker);
+                        const makerResult = await this.client.submitAndWait(signedMaker.tx_blob);
+                        
+                        if (makerResult.result.meta.TransactionResult === 'tesSUCCESS') {
+                            cancelTxs.push({
+                                recipient: escrow.maker,
+                                amount: escrow.amount.toString(),
+                                txHash: makerResult.result.hash
+                            });
+                        } else {
+                            throw new Error(`Payment to maker failed: ${makerResult.result.meta.TransactionResult}`);
+                        }
+                    }
 
-                    res.json({
-                        message: 'Escrow cancelled successfully',
-                        txHash: result.result.hash,
-                        refundAmount: (escrow.amount + escrow.safetyDeposit).toString()
-                    });
+                    // Return safety deposit to taker
+                    if (escrow.safetyDeposit > 0) {
+                        const takerPayment = {
+                            TransactionType: 'Payment',
+                            Account: wallet.address,
+                            Destination: escrow.taker,
+                            Amount: escrow.safetyDeposit.toString()
+                        };
+
+                        const preparedTaker = await this.client.autofill(takerPayment);
+                        const signedTaker = wallet.sign(preparedTaker);
+                        const takerResult = await this.client.submitAndWait(signedTaker.tx_blob);
+                        
+                        if (takerResult.result.meta.TransactionResult === 'tesSUCCESS') {
+                            cancelTxs.push({
+                                recipient: escrow.taker,
+                                amount: escrow.safetyDeposit.toString(),
+                                txHash: takerResult.result.hash
+                            });
+                        } else {
+                            throw new Error(`Safety deposit payment to taker failed: ${takerResult.result.meta.TransactionResult}`);
+                        }
+                    }
                 } else {
-                    throw new Error(`Transaction failed: ${result.result.meta.TransactionResult}`);
+                    throw new Error(`Unknown escrow type: ${escrow.type}`);
                 }
+
+                escrow.status = 'cancelled';
+                escrow.cancelTxs = cancelTxs;
+
+                res.json({
+                    message: 'Escrow cancelled successfully',
+                    escrowType: escrow.type,
+                    cancelTxs: cancelTxs,
+                    totalRefunded: (escrow.amount + escrow.safetyDeposit).toString()
+                });
 
             } catch (error) {
                 console.error('Error cancelling escrow:', error);
