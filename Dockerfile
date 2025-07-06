@@ -38,9 +38,6 @@ EOF
 
 RUN chmod +x /start.sh
 
-# Expose the port for XRPL TEE server
-EXPOSE 3000
-
 # Health check for XRPL TEE server
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
