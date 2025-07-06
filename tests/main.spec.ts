@@ -253,10 +253,12 @@ describe('Resolving example', () => {
             // Maker deposits funds to the escrow on the src chain
             const xrpDepositHash = await xrplUtils.sendXRP(xrpMaker, xrpEscrow.walletAddress, createEscrowPayload.amount)
             const xrplExplorer = `https://testnet.xrpl.org/transactions/${xrpDepositHash}`
+            console.log("Maker deposited funds", xrplExplorer)
 
             // Taker deposits the fee
             const xrpFeeDepositHash = await xrplUtils.sendXRP(xrpTaker, xrpEscrow.walletAddress, createEscrowPayload.safetyDeposit)
             const xrplExplorer2 = `https://testnet.xrpl.org/transactions/${xrpFeeDepositHash}`
+            console.log("Taker deposited the fee", xrplExplorer2)
 
             // Check if the escrow is funded
             const escrow = await xrpClient.fundEscrow(xrpEscrow.escrowId, {
