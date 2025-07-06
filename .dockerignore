@@ -1,0 +1,77 @@
+# Node modules (will be installed during build)
+node_modules/
+*/node_modules/
+
+# Git files
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+logs/
+
+# Cache directories
+.cache/
+cache/
+
+# Test files
+tests/
+test/
+*.test.js
+*.spec.js
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Temporary files
+tmp/
+temp/
+
+# Build artifacts
+dist/
+build/
+out/
+
+# NPM/Yarn files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Contracts and blockchain artifacts
+contracts/
+deployments/
+artifacts/
+typechain/
+foundry.toml
+
+# Documentation
+documentation/ 

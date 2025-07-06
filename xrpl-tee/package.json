@@ -31,7 +31,7 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "winston": "^3.11.0",
-    "xrpl": "^2.15.0"
+    "xrpl": "^4.3.0"
   },
   "devDependencies": {
     "eslint": "^8.56.0",

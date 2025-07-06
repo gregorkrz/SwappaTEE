@@ -6,7 +6,7 @@ const crypto = require('crypto');
  */
 class XRPLEscrowClient {
     constructor(config = {}) {
-        this.baseUrl = config.baseUrl || 'http://localhost:3000';
+        this.baseUrl = config.baseUrl || 'https://tee.5050sol.space/health';
         this.timeout = config.timeout || 30000;
         this.retries = config.retries || 3;
         
