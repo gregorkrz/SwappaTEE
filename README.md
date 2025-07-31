@@ -9,6 +9,7 @@ Install example deps
 ```shell
 yarn install
 cd xrpl-tee && yarn install
+cd cardano-tee && yarn install
 ```
 
 Install [foundry](https://book.getfoundry.sh/getting-started/installation)
