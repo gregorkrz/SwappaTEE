@@ -38,6 +38,7 @@ SRC_CHAIN_RPC=https://eth.merkle.io
 DST_CHAIN_RPC=wss://bsc-rpc.publicnode.com
 SRC_CHAIN_CREATE_FORK=true
 DST_CHAIN_CREATE_FORK=true
+BLOCKFROST_API_KEY=1a2b3c
 ```
 
 ### Setup docker container

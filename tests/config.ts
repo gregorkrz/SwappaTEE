@@ -33,7 +33,7 @@ export const config = {
             }
         },
         destination: {
-            chainId: Sdk.NetworkEnum.BINANCE,
+            //chainId: Sdk.NetworkEnum.CARDANO,
             url: fromEnv.DST_CHAIN_RPC,
             createFork: fromEnv.DST_CHAIN_CREATE_FORK,
             limitOrderProtocol: '0x111111125421ca6dc452d289314280a0f8842a65',

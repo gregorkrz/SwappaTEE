@@ -3,6 +3,15 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const { keccak256 } = require('ethers')
+const Cardano = require('@emurgo/cardano-serialization-lib-node');
+const crypto = require('crypto');
+// Fund the escrow wallet
+const axios = require('axios');
+const BLOCKFROST_API_KEY = process.env.BLOCKFROST_API_KEY;
+const BLOCKFROST_API_URL = 'https://cardano-testnet.blockfrost.io/api/v0';
+
+
+
 
 class XRPLEscrowTEE {
     constructor(config = {}) {
@@ -44,17 +53,29 @@ class XRPLEscrowTEE {
         }
     }
 
-    // Generate a new wallet for each escrow swap
-    async generateEscrowWallet() {
-        const staticSeed = Buffer.from('ripple-escrow-wallet', 'utf8'); // constant seed
-        const wallet = xrpl.Wallet.fromEntropy(staticSeed);
-        await this.refuelWalletFromFaucet(wallet);
-        console.log("Escrow wallet generated: priv key:", wallet.privateKey, "pub key:", wallet.publicKey, "address:", wallet.address);
+    // Generate a deterministic Cardano wallet from static string
+    async  generateCardanoEscrowWallet() {
+        const staticSeedPhrase = 'cardano-escrow-wallet'; // your static secret
+        const seed = crypto.createHash('sha256').update(staticSeedPhrase).digest(); // 32 bytes
+
+        const entropy = seed; // or seed.slice(0, 32);
+        const rootKey = Cardano.Bip32PrivateKey.from_bip39_entropy(entropy, Buffer.from(''));
+
+        const accountKey = rootKey.derive(1852 | 0x80000000)  // purpose
+            .derive(1815 | 0x80000000)                        // coin type for ADA
+            .derive(0 | 0x80000000);                         // account index
+
+        const utxoKey = accountKey.derive(0).derive(0).to_public();
+        const baseAddress = Cardano.BaseAddress.new(
+            0,
+            Cardano.StakeCredential.from_keyhash(utxoKey.to_raw_key().hash()),
+            Cardano.StakeCredential.from_keyhash(utxoKey.to_raw_key().hash())
+        ).to_address().to_bech32();
+
         return {
-            address: wallet.address,
-            seed: wallet.seed,
-            privateKey: wallet.privateKey,
-            publicKey: wallet.publicKey
+            address: baseAddress,
+            rootKeyBech32: rootKey.to_bech32(), // keep this safe, contains private keys
+            publicKeyHex: Buffer.from(utxoKey.to_raw_key().as_bytes()).toString('hex')
         };
     }
 
@@ -181,7 +202,7 @@ class XRPLEscrowTEE {
                 } = req.body;
 
                 // Generate new wallet for this escrow
-                const escrowWallet = await this.generateEscrowWallet();
+                const escrowWallet = await this.generateCardanoEscrowWallet();
                 const deployedAt = Math.floor(Date.now() / 1000);
                 const parsedTimelocks = this.parseTimelocks(timelocks, deployedAt);
 
@@ -228,79 +249,74 @@ class XRPLEscrowTEE {
             }
         });
 
-        // Fund the escrow wallet
-        this.app.post('/escrow/:escrowId/fund', async (req, res) => {
-            try {
-                const { escrowId } = req.params;
-                const { fromAddress, txHash } = req.body;
 
-                let txHashes = txHash.split(',')
-
-                const escrow = this.escrows.get(escrowId);
-                if (!escrow) {
-                    return res.status(404).json({ error: 'Escrow not found' });
-                }
-
-                // Ensure txHashes is an array
-                const hashArray = Array.isArray(txHashes) ? txHashes : [txHashes];
-
-                let totalAmountReceived = 0n;
-                const verifiedTxs = [];
-
-                // Verify each funding transaction
-                for (const txHash of hashArray) {
-                    console.log("Verifying funding transaction", txHash)
-                    const tx = await this.client.request({
-                        command: 'tx',
-                        transaction: txHash
-                    });
-
-                    if (tx.result.tx_json.TransactionType !== 'Payment') {
-                        return res.status(400).json({
-                            error: `Invalid transaction type for ${txHash}`
-                        });
-                    }
-
-                    if (tx.result.tx_json.Destination !== escrow.wallet.address) {
-                        return res.status(400).json({
-                            error: `Payment ${txHash} not sent to escrow address`
-                        });
-                    }
-
-                    const amountReceived = BigInt(tx.result.meta.delivered_amount);
-                    totalAmountReceived += amountReceived;
-                    verifiedTxs.push({
-                        txHash,
-                        amount: amountReceived.toString()
-                    });
-                }
-
-                const requiredAmount = escrow.token === '0x0000000000000000000000000000000000000000' ?
-                    escrow.amount + escrow.safetyDeposit :
-                    escrow.safetyDeposit;
-
-                if (totalAmountReceived < requiredAmount) {
-                    return res.status(400).json({
-                        error: `Insufficient funding. Required: ${requiredAmount}, Received: ${totalAmountReceived}`,
-                        verifiedTxs
-                    });
-                }
-
-                escrow.status = 'funded';
-                escrow.fundingTxs = hashArray;
-
-                res.json({
-                    message: 'Escrow successfully funded',
-                    escrowId,
-                    totalAmountReceived: totalAmountReceived.toString(),
-                    verifiedTxs
-                });
-
-            } catch (error) {
-                console.error('Error funding escrow:', error);
-                res.status(500).json({ error: error.message });
-            }
+// Helper: Get total amount received at a Cardano address
+async function getCardanoReceivedAmount(address, assetUnit = 'lovelace') {
+    try {
+        const res = await axios.get(`${BLOCKFROST_API_URL}/addresses/${address}/utxos`, {
+            headers: { project_id: BLOCKFROST_API_KEY }
         });
+
+        let total = BigInt(0);
+        for (const utxo of res.data) {
+            for (const amount of utxo.amount) {
+                if (amount.unit === assetUnit) {
+                    total += BigInt(amount.quantity);
+                }
+            }
+        }
+        return total;
+    } catch (err) {
+        console.error('Error fetching UTXOs:', err.response?.data || err.message);
+        throw new Error('Failed to fetch UTXOs from Blockfrost');
+    }
+}
+
+
+this.app.post('/escrow/:escrowId/fund', async (req, res) => {
+    try {
+        const { escrowId } = req.params;
+        const escrow = this.escrows.get(escrowId);
+
+        if (!escrow) {
+            return res.status(404).json({ error: 'Escrow not found' });
+        }
+
+        const escrowAddress = escrow.wallet.address;
+        const isADA = escrow.token === 'lovelace' || escrow.token === null;
+
+        // Determine token identifier for Blockfrost
+        const tokenUnit = isADA ? 'lovelace' : escrow.token; // e.g., policyid.assetname
+        const received = await getCardanoReceivedAmount(escrowAddress, tokenUnit);
+
+        const required = isADA
+            ? escrow.amount + escrow.safetyDeposit
+            : escrow.safetyDeposit; // Native token scenario
+
+        if (received < required) {
+            return res.status(400).json({
+                error: `Insufficient deposit. Required: ${required}, Received: ${received.toString()}`
+            });
+        }
+
+        escrow.status = 'funded';
+        escrow.receivedAmount = received.toString();
+        escrow.fundedAt = Date.now();
+
+        res.json({
+            message: 'Escrow funded successfully',
+            escrowId,
+            receivedAmount: received.toString(),
+            token: tokenUnit,
+            walletAddress: escrowAddress
+        });
+
+    } catch (err) {
+        console.error('Cardano funding verification error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
         // Withdraw from destination escrow (for maker)
         this.app.post('/escrow/:escrowId/withdraw', async (req, res) => {
