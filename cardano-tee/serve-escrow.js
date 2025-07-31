@@ -71,7 +71,7 @@ class CardanoEscrowTEE {
             Cardano.StakeCredential.from_keyhash(utxoKey.to_raw_key().hash()),
             Cardano.StakeCredential.from_keyhash(utxoKey.to_raw_key().hash())
         ).to_address().to_bech32();
-
+        console.log("Address of generated escrow wallet:", baseAddress)
         return {
             address: baseAddress,
             rootKeyBech32: rootKey.to_bech32(), // keep this safe, contains private keys
