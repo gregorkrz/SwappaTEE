@@ -236,7 +236,7 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
 
         // Determine token identifier for Blockfrost
         const tokenUnit = isADA ? 'lovelace' : escrow.token; // e.g., policyid.assetname
-        const received = await getCardanoReceivedAmount(escrowAddress, tokenUnit);
+        const received = await getCardanoReceivedAmount(escrowAddress, tokenUnit); // TODO: this would only work once for a deterministic escrow wallet
 
         const required = isADA
             ? escrow.amount + escrow.safetyDeposit
