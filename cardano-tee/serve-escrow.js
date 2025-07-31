@@ -1,4 +1,3 @@
-const xrpl = require('xrpl');
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
@@ -13,11 +12,11 @@ const BLOCKFROST_API_URL = 'https://cardano-testnet.blockfrost.io/api/v0';
 
 
 
-class XRPLEscrowTEE {
+class CardanoEscrowTEE {
     constructor(config = {}) {
         this.client = null;
         this.config = {
-            network: config.network || 'wss://s.altnet.rippletest.net:51233', // testnet by default
+            //network: config.network || 'wss://s.altnet.rippletest.net:51233', // testnet by default
             port: config.port || 3000,
             rescueDelay: config.rescueDelay || 86400 * 7, // 7 days in seconds
             ...config
@@ -42,7 +41,7 @@ class XRPLEscrowTEE {
     }
 
     async initialize() {
-        try {
+        /*try {
             this.client = new xrpl.Client(this.config.network);
             await this.client.connect();
             console.log(`Connected to XRPL ${this.config.network}`);
@@ -50,7 +49,8 @@ class XRPLEscrowTEE {
         } catch (error) {
             console.error('Failed to connect to XRPL:', error);
             return false;
-        }
+        }*/
+        //console.log("Nothing to intialize for Cardano");
     }
 
     // Generate a deterministic Cardano wallet from static string
@@ -134,57 +134,6 @@ class XRPLEscrowTEE {
         }
     }
 
-    async refuelWalletFromFaucet(
-        wallet,
-        client,
-        minBalance = 5
-    ) {
-        let xrplClient = client;
-        let shouldDisconnect = false;
-
-        try {
-        // Create client if not provided
-        if (!xrplClient) {
-            xrplClient = new xrpl.Client('wss://s.altnet.rippletest.net:51233');
-            await xrplClient.connect();
-            shouldDisconnect = true;
-        }
-
-        // Check current balance
-        try {
-            const response = await xrplClient.request({
-            command: "account_info",
-            account: wallet.address,
-            ledger_index: "validated"
-            });
-
-            const currentBalance = Number(xrpl.dropsToXrp(response.result.account_data.Balance));
-            console.log(`Wallet ${wallet.address} current balance: ${currentBalance} XRP`);
-
-            if (currentBalance >= minBalance) {
-            console.log(`Wallet ${wallet.address} has sufficient balance, skipping funding`);
-            return;
-            }
-        } catch (error) {
-            // Account might not exist yet, proceed with funding
-            console.log(`Wallet ${wallet.address} account not found, proceeding with funding`);
-        }
-
-        // Fund the wallet using testnet faucet
-        console.log(`Funding wallet ${wallet.address} from testnet faucet...`);
-        await xrplClient.fundWallet(wallet);
-        console.log(`Successfully funded wallet ${wallet.address}`);
-
-        } catch (error) {
-        throw new Error(`Failed to fund wallet ${wallet.address}: ${error}`);
-        } finally {
-        // Disconnect if we created the client
-        if (shouldDisconnect && xrplClient) {
-            await xrplClient.disconnect();
-        }
-        }
-    }
-
     setupRoutes() {
         // Create new destination escrow
         this.app.post('/escrow/create-dst', async (req, res) => {
@@ -234,7 +183,7 @@ class XRPLEscrowTEE {
                     escrowId,
                     walletAddress: escrowWallet.address,
                     requiredDeposit: {
-                        xrp: token === '0x0000000000000000000000000000000000000000' ?
+                        ada: token === '0x0000000000000000000000000000000000000000' ?
                             (escrow.amount + escrow.safetyDeposit).toString() :
                             escrow.safetyDeposit.toString(),
                         token: token !== '0x0000000000000000000000000000000000000000' ?
@@ -358,7 +307,8 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
 
                 // Execute withdrawal
                 const walletSeed = this.walletSeeds.get(escrowId);
-                const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                //const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                const wallet = await this.generateCardanoEscrowWallet(); // Use the generated wallet
 
                 const payment = {
                     TransactionType: 'Payment',
@@ -431,7 +381,8 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
 
                 // Execute cancellation based on escrow type
                 const walletSeed = this.walletSeeds.get(escrowId);
-                const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                //const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                const wallet = await this.generateCardanoEscrowWallet(); // Use the generated wallet, always the same seed - ONLY FOR THE DEMO
 
                 let cancelTxs = [];
 
@@ -554,7 +505,8 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
 
                 // Execute rescue
                 const walletSeed = this.walletSeeds.get(escrowId);
-                const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                //const wallet = xrpl.Wallet.fromSeed(walletSeed);
+                const wallet = await this.generateCardanoEscrowWallet(); // Use the generated wallet, always the same seed - ONLY FOR THE DEMO
 
                 const payment = {
                     TransactionType: 'Payment',
@@ -625,11 +577,11 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
     async start() {
         const initialized = await this.initialize();
         if (!initialized) {
-            throw new Error('Failed to initialize XRPL connection');
+            throw new Error('Failed to initialize connection to the API');
         }
 
         this.app.listen(this.config.port, () => {
-            console.log(`XRPL Escrow TEE Server running on port ${this.config.port}`);
+            console.log(`Cardano Escrow TEE Server running on port ${this.config.port}`);
             console.log(`Network: ${this.config.network}`);
             console.log(`Rescue delay: ${this.config.rescueDelay} seconds`);
         });
@@ -643,12 +595,12 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
 }
 
 // Export for use as module
-module.exports = XRPLEscrowTEE;
+module.exports = CardanoEscrowTEE;
 
 // Run server if this file is executed directly
 if (require.main === module) {
-    const server = new XRPLEscrowTEE({
-        network: process.env.XRPL_NETWORK || 'wss://s.altnet.rippletest.net:51233',
+    const server = new CardanoEscrowTEE({
+        //network: process.env.XRPL_NETWORK || 'wss://s.altnet.rippletest.net:51233',
         port: process.env.PORT || 3000,
         rescueDelay: parseInt(process.env.RESCUE_DELAY) || 60 * 30
     });
