@@ -7,9 +7,7 @@ const crypto = require('crypto');
 // Fund the escrow wallet
 const axios = require('axios');
 const BLOCKFROST_API_KEY = process.env.BLOCKFROST_API_KEY;
-const BLOCKFROST_API_URL = 'https://cardano-testnet.blockfrost.io/api/v0';
-
-
+const BLOCKFROST_API_URL = 'https://cardano-testnet.blockfrost.io/api/v0'; // preprod testnet // TODO: put in the config
 
 
 class CardanoEscrowTEE {
@@ -54,8 +52,8 @@ class CardanoEscrowTEE {
     }
 
     // Generate a deterministic Cardano wallet from static string
-    async  generateCardanoEscrowWallet() {
-        const staticSeedPhrase = 'cardano-escrow-wallet'; // your static secret
+    async  generateCardanoEscrowWallet(staticSeedPhrase = 'cardano-escrow-wallet') {
+        //const staticSeedPhrase = 'cardano-escrow-wallet'; // your static secret
         const seed = crypto.createHash('sha256').update(staticSeedPhrase).digest(); // 32 bytes
 
         const entropy = seed; // or seed.slice(0, 32);
@@ -151,11 +149,12 @@ class CardanoEscrowTEE {
                 } = req.body;
 
                 // Generate new wallet for this escrow
-                const escrowWallet = await this.generateCardanoEscrowWallet();
                 const deployedAt = Math.floor(Date.now() / 1000);
                 const parsedTimelocks = this.parseTimelocks(timelocks, deployedAt);
 
                 const escrowId = crypto.randomUUID();
+                const escrowWallet = await this.generateCardanoEscrowWallet(escrowId);
+
                 const escrow = {
                     id: escrowId,
                     orderHash,
@@ -183,10 +182,10 @@ class CardanoEscrowTEE {
                     escrowId,
                     walletAddress: escrowWallet.address,
                     requiredDeposit: {
-                        ada: token === '0x0000000000000000000000000000000000000000' ?
+                        ada: token === 'lovelace' ?
                             (escrow.amount + escrow.safetyDeposit).toString() :
                             escrow.safetyDeposit.toString(),
-                        token: token !== '0x0000000000000000000000000000000000000000' ?
+                        token: token !== 'lovelace' ?
                             escrow.amount.toString() : '0'
                     },
                     timelocks: parsedTimelocks
@@ -420,7 +419,7 @@ this.app.post('/escrow/:escrowId/withdraw', async (req, res) => {
                 // Execute cancellation based on escrow type
                 const walletSeed = this.walletSeeds.get(escrowId);
                 //const wallet = xrpl.Wallet.fromSeed(walletSeed);
-                const wallet = await this.generateCardanoEscrowWallet(); // Use the generated wallet, always the same seed - ONLY FOR THE DEMO
+                const wallet = await this.generateCardanoEscrowWallet(escrowId); // Use the generated wallet, always the same seed - ONLY FOR THE DEMO
 
                 let cancelTxs = [];
 
@@ -544,7 +543,7 @@ this.app.post('/escrow/:escrowId/withdraw', async (req, res) => {
                 // Execute rescue
                 const walletSeed = this.walletSeeds.get(escrowId);
                 //const wallet = xrpl.Wallet.fromSeed(walletSeed);
-                const wallet = await this.generateCardanoEscrowWallet(); // Use the generated wallet, always the same seed - ONLY FOR THE DEMO
+                const wallet = await this.generateCardanoEscrowWallet(escrowId); // Use the generated wallet, always the same seed - ONLY FOR THE DEMO
 
                 const payment = {
                     TransactionType: 'Payment',

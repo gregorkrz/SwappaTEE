@@ -362,7 +362,7 @@ class CardanoEscrowUtils {
      */
     static calculateDeposits(token, amount, safetyDeposit) {
         console.log("Token:", token, "Amount:", amount, "Safety deposit:", safetyDeposit);
-        const isNativeXRP = token === '0x0000000000000000000000000000000000000000'; // TODO adapt for Cardano
+        const isNativeXRP = token === 'lovelace'; // TODO adapt for Cardano
         return {
             xrp: isNativeXRP ? 
                 (BigInt(amount) + BigInt(safetyDeposit)).toString() : 
@@ -399,13 +399,13 @@ class CardanoEscrowUtils {
         }
 
         // Validate addresses
-        if (!params.maker.match(/^r[0-9a-zA-Z]{24,34}$/)) {
-            throw new Error('Invalid maker XRPL address'); // TODO: adapt for cardano
-        }
+        //if (!params.maker.match(/^r[0-9a-zA-Z]{24,34}$/)) {
+        //    throw new Error('Invalid maker XRPL address'); // TODO: adapt for cardano
+        //}
 
-        if (!params.taker.match(/^r[0-9a-zA-Z]{24,34}$/)) {
-            throw new Error('Invalid taker XRPL address'); // TODO: adapt for cardano
-        }
+        //if (!params.taker.match(/^r[0-9a-zA-Z]{24,34}$/)) {
+        //throw new Error('Invalid taker XRPL address'); // TODO: adapt for cardano
+        //}
 
         // Validate amounts
         if (BigInt(params.amount) <= 0) {
