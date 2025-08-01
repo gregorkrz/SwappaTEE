@@ -267,98 +267,136 @@ this.app.post('/escrow/:escrowId/fund', async (req, res) => {
 });
 
 
-        // Withdraw from destination escrow (for maker)
-        this.app.post('/escrow/:escrowId/withdraw', async (req, res) => {
-            try {
-                const { escrowId } = req.params;
-                const { secret, callerAddress, isPublic = false } = req.body;
 
-                const escrow = this.escrows.get(escrowId);
-                if (!escrow) {
-                    return res.status(404).json({ error: 'Escrow not found' });
-                }
+this.app.post('/escrow/:escrowId/withdraw', async (req, res) => {
+    try {
+        const { escrowId } = req.params;
+        const { secret, callerAddress, isPublic = false } = req.body;
 
-                if (escrow.status !== 'funded') {
-                    return res.status(400).json({ error: 'Escrow not funded' });
-                }
+        const escrow = this.escrows.get(escrowId);
+        if (!escrow) return res.status(404).json({ error: 'Escrow not found' });
+        if (escrow.status !== 'funded') return res.status(400).json({ error: 'Escrow not funded' });
 
-                // Validate secret
-                this.validateSecret(secret, escrow.hashlock);
+        // Validate secret
+        this.validateSecret(secret, escrow.hashlock);
 
-                // Validate caller and timing
-                if (!isPublic) {
-                    if (callerAddress !== escrow.taker) {
-                        return res.status(403).json({ error: 'Only taker can withdraw during private period' });
-                    }
-                    this.validateTimeWindow(
-                        escrow,
-                        this.TimeStages.DstWithdrawal,
-                        this.TimeStages.DstCancellation,
-                        11 // simulate 11 seconds delay, just like EVM part
-                    );
-                } else {
-                    // Public withdrawal - anyone can call
-                    this.validateTimeWindow(
-                        escrow,
-                        this.TimeStages.DstPublicWithdrawal,
-                        this.TimeStages.DstCancellation
-                    );
-                }
+        // Validate time
+        if (!isPublic) {
+            if (callerAddress !== escrow.taker) return res.status(403).json({ error: 'Only taker can withdraw during private window' });
+            this.validateTimeWindow(escrow, this.TimeStages.DstWithdrawal, this.TimeStages.DstCancellation, 11);
+        } else {
+            this.validateTimeWindow(escrow, this.TimeStages.DstPublicWithdrawal, this.TimeStages.DstCancellation);
+        }
 
-                // Execute withdrawal
-                const walletSeed = this.walletSeeds.get(escrowId);
-                //const wallet = xrpl.Wallet.fromSeed(walletSeed);
-                const wallet = await this.generateCardanoEscrowWallet(); // Use the generated wallet
+        // Recover escrow wallet
+        const walletSeed = this.walletSeeds.get(escrowId);
+        const wallet = this.recoverCardanoWalletFromSeed(walletSeed); // Your own function
+        const senderAddress = wallet.address;
 
-                const payment = {
-                    TransactionType: 'Payment',
-                    Account: wallet.address,
-                    Destination: escrow.maker,
-                    Amount: escrow.amount.toString()
-                };
-                console.log("Withdrawing from escrow", payment)
-                const prepared = await this.client.autofill(payment);
-                const signed = wallet.sign(prepared);
-                const result = await this.client.submitAndWait(signed.tx_blob);
+        // Fetch UTXOs
+        const utxosRes = await axios.get(`${BLOCKFROST_API_URL}/addresses/${senderAddress}/utxos`, {
+            headers: { project_id: BLOCKFROST_API_KEY }
+        });
 
-                if (result.result.meta.TransactionResult === 'tesSUCCESS') {
-                    escrow.status = 'withdrawn';
-                    escrow.withdrawTx = result.result.hash;
-                    escrow.secret = secret;
+        // Build tx inputs
+        const txBuilderCfg = Cardano.TransactionBuilderConfigBuilder.new()
+            .fee_algo(Cardano.LinearFee.new(Cardano.BigNum.from_str('44'), Cardano.BigNum.from_str('155381')))
+            .coins_per_utxo_word(Cardano.BigNum.from_str('34482'))
+            .pool_deposit(Cardano.BigNum.from_str('500000000'))
+            .key_deposit(Cardano.BigNum.from_str('2000000'))
+            .max_value_size(5000)
+            .max_tx_size(16384)
+            .build();
 
-                    // Send safety deposit to caller
-                    if (escrow.safetyDeposit > 0) {
-                        const safetyPayment = {
-                            TransactionType: 'Payment',
-                            Account: wallet.address,
-                            Destination: callerAddress,
-                            Amount: escrow.safetyDeposit.toString()
-                        };
+        const txBuilder = Cardano.TransactionBuilder.new(txBuilderCfg);
 
-                        const preparedSafety = await this.client.autofill(safetyPayment);
-                        const signedSafety = wallet.sign(preparedSafety);
-                        await this.client.submitAndWait(signedSafety.tx_blob);
-                    }
+        let totalInput = BigInt(0);
+        const escrowAmount = BigInt(escrow.amount);
+        const depositAmount = BigInt(escrow.safetyDeposit);
+        const totalOutput = escrowAmount + depositAmount;
 
-                    res.json({
-                        message: 'Withdrawal successful',
-                        txHash: result.result.hash,
-                        secret: secret,
-                        amount: escrow.amount.toString()
-                    });
-                } else {
-                    throw new Error(`Transaction failed: ${result.result.meta.TransactionResult}`);
-                }
+        for (const utxo of utxosRes.data) {
+            const input = Cardano.TransactionUnspentOutput.new(
+                Cardano.TransactionInput.new(
+                    Cardano.TransactionHash.from_bytes(Buffer.from(utxo.tx_hash, 'hex')),
+                    utxo.output_index
+                ),
+                Cardano.TransactionOutput.new(
+                    Cardano.Address.from_bech32(utxo.address),
+                    Cardano.Value.new(Cardano.BigNum.from_str(utxo.amount[0].quantity))
+                )
+            );
+            txBuilder.add_input(wallet.publicKey, input.input(), input.output().amount());
+            totalInput += BigInt(utxo.amount[0].quantity);
+            if (totalInput >= totalOutput + 200000n) break; // Stop once we have enough
+        }
 
-            } catch (error) {
-                console.error('Error processing withdrawal:', error);
-                res.status(500).json({ error: error.message });
+        if (totalInput < totalOutput + 200000n) {
+            return res.status(400).json({ error: 'Not enough balance in escrow wallet' });
+        }
+
+        // Add output to maker
+        txBuilder.add_output(Cardano.TransactionOutput.new(
+            Cardano.Address.from_bech32(escrow.maker),
+            Cardano.Value.new(Cardano.BigNum.from_str(escrowAmount.toString()))
+        ));
+
+        // Add output to caller
+        if (depositAmount > 0) {
+            txBuilder.add_output(Cardano.TransactionOutput.new(
+                Cardano.Address.from_bech32(callerAddress),
+                Cardano.Value.new(Cardano.BigNum.from_str(depositAmount.toString()))
+            ));
+        }
+
+        // Set fee and change
+        txBuilder.set_ttl(3600);
+        txBuilder.add_change_if_needed(Cardano.Address.from_bech32(senderAddress));
+
+        // Build and sign tx
+        const txBody = txBuilder.build();
+        const txHash = Cardano.hash_transaction(txBody);
+        const witnesses = Cardano.TransactionWitnessSet.new();
+        const vkeyWitnesses = Cardano.Vkeywitnesses.new();
+
+        const vkeyWitness = Cardano.make_vkey_witness(txHash, wallet.privateKey.to_raw_key());
+        vkeyWitnesses.add(vkeyWitness);
+        witnesses.set_vkeys(vkeyWitnesses);
+
+        const signedTx = Cardano.Transaction.new(txBody, witnesses);
+
+        // Submit to Blockfrost
+        const txBytes = Buffer.from(signedTx.to_bytes()).toString('hex');
+        const submitRes = await axios.post(`${BLOCKFROST_API_URL}/tx/submit`, Buffer.from(txBytes, 'hex'), {
+            headers: {
+                'Content-Type': 'application/cbor',
+                project_id: BLOCKFROST_API_KEY
             }
         });
 
+        const txHashHex = submitRes.data;
+
+        // Mark escrow as completed
+        escrow.status = 'withdrawn';
+        escrow.secret = secret;
+        escrow.withdrawTx = txHashHex;
+
+        res.json({
+            message: 'Withdrawal successful',
+            secret,
+            txHash: txHashHex,
+            amount: escrow.amount.toString()
+        });
+
+    } catch (error) {
+        console.error('Withdraw error:', error.response?.data || error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
         // Cancel destination escrow
         this.app.post('/escrow/:escrowId/cancel', async (req, res) => {
             // This happens if maker does not reveal the secret in time.
+            // TODO: implement for Cardano, still in progress
             try {
                 const { escrowId } = req.params;
                 const { callerAddress } = req.body;
